@@ -1,3 +1,250 @@
+/**
+*
+* location bid modifier script
+*
+* The script calculates location level moodier based on the last 7 or 30 days data.
+* The script will take into account the current device level modifiers.
+*
+* Version: 1.0
+* maintained by Clicteq
+*
+**/
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~//
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~//
+//Options
+//Select look back window. Available values 'week' = last 7 days, 'month' = last 30 days.
+USERLOOKBACK = 'month' 
+//Select conversions limit. Each campaign with less conversions than conversions limit on device level will have the account-level modifiers applied.
+CONVERSIONSLIMIT = 5 
+//Select which campaigns to include. Put [] to include all campaigns. Pass a list, for example, ["campaign1","campaign2"] to include certain campaigns.
+INCLUDEDCAMPAIGNS = [] 
+//Select which campaigns to exclude. Put [] not to exclude any campaigns. Pass a list, for example, ["campaign1","campaign2"] to exclude certain campaigns.
+EXCLUDEDCAMPAIGNS = []
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~//
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~//
+function prepareInput()
+{
+  //Prepares input
+  
+  if(USERLOOKBACK == 'month')
+  {
+  TIMERANGE = 'LAST_30_DAYS'
+  }
+  
+  else if(USERLOOKBACK = 'week')
+  {
+    TIMERANGE = 'LAST_7_DAYS'
+  }
+   
+  for(var i = 0; i < INCLUDEDCAMPAIGNS.length; i ++)
+  {
+    INCLUDEDCAMPAIGNS[i] = "'" + INCLUDEDCAMPAIGNS[i] + "'"
+    
+  }
+  
+  for(var i = 0; i < EXCLUDEDCAMPAIGNS.length; i ++)
+  {
+    EXCLUDEDCAMPAIGNS[i] = "'" + EXCLUDEDCAMPAIGNS[i] + "'"
+    
+  }
+  
+  
+  INCLUDEDPARSED = "[" + INCLUDEDCAMPAIGNS.toString() + "]"
+  EXCLUDEDPARSED = "[" + EXCLUDEDCAMPAIGNS.toString() + "]"
+}
+function getRows(reportType)
+{
+  //Gets the correct report to calculate CPAs using user input (for campaigns
+  
+  if(reportType == 'account')
+  {var query = "SELECT Id, Cost, Conversions FROM CAMPAIGN_LOCATION_TARGET_REPORT DURING "}
+  else if(reportType == 'campaign')
+  {
+    if(INCLUDEDCAMPAIGNS.length == 0 && EXCLUDEDCAMPAIGNS.length == 0)
+    {
+    var query = "SELECT Id,CampaignName, Cost,Conversions FROM CAMPAIGN_LOCATION_TARGET_REPORT DURING "
+    
+    }
+    else if (INCLUDEDCAMPAIGNS.length >0)
+    {
+      var query = "SELECT CampaignName, Cost, Id,Conversions FROM CAMPAIGN_LOCATION_TARGET_REPORT WHERE CampaignName IN "+ INCLUDEDPARSED +" DURING "
+    }
+    else if (EXCLUDEDCAMPAIGNS.length >0)
+    {
+      var query = "SELECT CampaignName, Cost, Id,Conversions FROM CAMPAIGN_LOCATION_TARGET_REPORT WHERE CampaignName NOT_IN "+ EXCLUDEDPARSED +" DURING "
+    }
+    
+  }
+  return AdWordsApp.report(query + TIMERANGE).rows()
+}
+function calcModifier(cpa,accountCpa)
+{
+  //Calcuates a bid modifier
+  
+  return (((accountCpa/cpa) - 1) * 100).toFixed(0)
+}
+function getAccountModifiers()
+  {
+    
+    //Returns account-level bid modifiers
+     
+  var rows = getRows('account')
+  
+  var modifiers = {}
+  var totalCost = 0
+  var totalConv = 0
+  var foundIds = []
+  var tempCpas = {}
+  
+  while(rows.hasNext())
+  {
+    var row = rows.next()
+    rowValues = row.formatForUpload()
+    var rowValues = row.formatForUpload()
+    var cost = rowValues['Cost'].replace(",","")
+    cost = parseFloat(cost)
+    var conversions = rowValues['Conv. (opt.)'].replace(",","")
+    conversions = parseFloat(conversions)
+    totalCost += cost
+    totalConv += conversions
+    var location = rowValues['Location']
+    if(foundIds.indexOf(location) == -1)
+    {
+      foundIds.push(location)
+      tempCpas[location] = {'cost':0, 'conversions':0}
+      tempCpas[location]['cost'] = tempCpas[location]['cost'] + cost
+      tempCpas[location]['conversions'] = tempCpas[location]['conversions'] + conversions
+      
+    }
+    
+    else
+    {
+      tempCpas[location]['cost'] = tempCpas[location]['cost'] + cost
+      tempCpas[location]['conversions'] = tempCpas[location]['conversions'] + conversions
+    
+    }
+   
+  var accountCpa = (totalCost/totalConv).toFixed(2)  
+    
+  }
+  for (var i = 0; i < foundIds.length ; i++)
+    {
+      var location = foundIds[i]
+      var locCpa = tempCpas[location]['cost']/tempCpas[location]['conversions']
+      if(tempCpas[location]['conversions'] > 0)
+      {
+      modifiers[location] = calcModifier(locCpa,accountCpa)
+      }
+      else
+      {
+        modifiers[location] = 'skip'
+      }
+      
+    }
+    Logger.log("ACCOUNT CONVERSIONS: " + totalConv)
+    Logger.log("ACCOUNT COST: " + totalCost)
+    
+  Logger.log("ACCOUNT CPA: " + accountCpa)
+    Logger.log("-----------------------------------")
+  
+  return modifiers
+  }
+function getCampaignCpas()
+{
+  
+  //Gets campaign cpas segmented by device
+  
+  var rows = getRows('campaign') 
+  var campaignCpas = {}
+  var foundCampaigns = []
+  
+  while(rows.hasNext())
+  {
+    var row = rows.next()
+    rowValues = row.formatForUpload()
+    var rowValues = row.formatForUpload()
+    var campaign = rowValues['Campaign']
+    var cost = rowValues['Cost'].replace(",","")
+    var conversions = rowValues['Conv. (opt.)'].replace(",","")
+    cost = parseFloat(cost)
+    conversions = parseFloat(conversions)
+    
+    var location = rowValues['Location']
+    
+    var allLocations = {}
+    var temp = {}
+     
+    if(conversions > CONVERSIONSLIMIT)
+    {
+    var modifier = cost/conversions
+    
+    }
+    
+    else
+    {
+    var modifier = 'account'
+    
+    }
+    
+    if(foundCampaigns.indexOf(campaign) == - 1)
+    {
+      campaignCpas[campaign] = {}
+      campaignCpas[campaign][location] = modifier
+      foundCampaigns.push(campaign)
+    }
+    
+    else
+    {
+      campaignCpas[campaign][location] = modifier
+    }
+  }
+  return campaignCpas
+}
+function getCampaigns(campaignTypes)
+{
+  //Gets a campaign iterator using the conditions from user input
+  
+  if(campaignTypes == 'normal')
+  {
+  
+      if(INCLUDEDCAMPAIGNS.length == 0 && EXCLUDEDCAMPAIGNS.length == 0)
+    {
+    var campaigns = AdWordsApp.campaigns().get()
+    }
+    else if (INCLUDEDCAMPAIGNS.length >0)
+    {
+      var campaigns = AdWordsApp.campaigns().withCondition("CampaignName IN "+ INCLUDEDPARSED).get()
+      
+    }
+    else if (EXCLUDEDCAMPAIGNS.length >0)
+    {
+      var campaigns = AdWordsApp.campaigns().withCondition("CampaignName NOT_IN "+ EXCLUDEDPARSED).get()
+    }
+  }
+  
+  else if(campaignTypes == 'shopping')
+  {
+    if(INCLUDEDCAMPAIGNS.length == 0 && EXCLUDEDCAMPAIGNS.length == 0)
+    {
+    var campaigns = AdWordsApp.shoppingCampaigns().get()
+    }
+    else if (INCLUDEDCAMPAIGNS.length >0)
+    {
+      var campaigns = AdWordsApp.shoppingCampaigns().withCondition("CampaignName IN "+ INCLUDEDPARSED).get()
+      
+    }
+    else if (EXCLUDEDCAMPAIGNS.length >0)
+    {
+      var campaigns = AdWordsApp.shoppingCampaigns().withCondition("CampaignName NOT_IN "+ EXCLUDEDPARSED).get()
+    }
+     
+  }
+  
+  return campaigns
+}
+function setBids(campaigns,campaignCpas, accountModifiers)
+{
+ 
     while(campaigns.hasNext())
   {
     var campaign = campaigns.next()

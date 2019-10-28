@@ -1,0 +1,79 @@
+    while(campaigns.hasNext())
+  {
+    var campaign = campaigns.next()
+    var name = campaign.getName()
+      
+    var campaignCpa = campaign.getStatsFor(TIMERANGE).getCost()/campaign.getStatsFor(TIMERANGE).getConversions()
+      
+    Logger.log("CAMPAIGN NAME: " + name)
+    Logger.log("")
+    
+    var locations = campaign.targeting().targetedLocations().get()
+    
+    while(locations.hasNext())
+    {
+      var location = locations.next()
+      var id = location.getId().toString()
+      var locName = location.getName()
+      
+      var currentBid = location.getBidModifier()
+      
+      if(campaignCpas[name][id] == 'account')
+      {
+        if(accountModifiers[id] == 'skip')
+        {continue}
+        
+        else
+        {
+        var newModifier = parseInt(accountModifiers[id])/100
+        }
+        
+      }
+      
+      else
+          
+      {
+       var newModifier = calcModifier(campaignCpas[name][id],campaignCpa)/100
+      }
+      
+      
+      if(isNaN(newModifier))
+      {continue}
+      
+      var newBid = currentBid + newModifier
+      if(newBid < 0)
+      {
+        newBid = 0
+      }
+      
+      if(newBid == currentBid)
+      {
+        continue
+      }
+        
+      Logger.log("")
+      Logger.log(locName)
+      Logger.log("CURRENT BID: " + currentBid)
+      Logger.log("NEW BID: " + newBid)
+      location.setBidModifier(newBid)
+      
+    }
+    Logger.log("")
+    Logger.log("#############################") 
+  }
+  
+}
+function main() 
+{
+  //Combines all functions and modifies bids
+  
+  prepareInput()
+  
+  var accountModifiers = getAccountModifiers()
+  var campaignCpas = getCampaignCpas()
+  
+  var campaigns = getCampaigns('normal')
+  var shoppingCampaigns = getCampaigns('shopping')
+  
+  setBids(shoppingCampaigns,campaignCpas, accountModifiers)
+  setBids(campaigns,campaignCpas, accountModifiers)
